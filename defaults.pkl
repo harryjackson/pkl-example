@@ -1,0 +1,83 @@
+module chickens
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/K8sResource.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/apimachinery/pkg/apis/meta/v1/ObjectMeta.pkl"
+import "package://pkg.pkl-lang.org/pkl-k8s/k8s@1.0.1#/api/core/v1/Service.pkl"
+
+
+class ServiceInstance {
+  name: String
+  metadata: ObjectMeta
+  specServicePorts: Mapping<Int, Service.ServicePort>
+}
+
+local baseLabels = new Mapping {
+  ["component"] = "chicken"
+  ["subsystem"] = "easter-egger"
+  ["team"] = "easter-engineering"
+}
+
+local function getService(_srv: ServiceInstance): Service = new Service {
+
+  metadata = new ObjectMeta {
+    name = _srv.name
+    labels = if (_srv.metadata.labels.isEmpty) null else _srv.metadata.labels
+  }
+  spec = new Service.ServiceSpec {
+    ports = new Listing<Service.ServicePort> {
+      for(k, sp in _srv.specServicePorts) {
+        new Service.ServicePort {
+          appProtocol = sp.appProtocol
+          targetPort = sp.targetPort
+          port = sp.port
+          name = sp.name
+          protocol = sp.protocol
+        }
+      }
+    }
+  }
+}
+
+services = new Mapping<String, ServiceInstance> {
+  ["birdservice"] = new ServiceInstance {
+    name = "birdservice"
+    metadata = new ObjectMeta {
+      name = "birdservice"
+      labels = (baseLabels) {
+        ["app"] = "birdservice"
+      }
+    }
+    specServicePorts = new Mapping<Int, Service.ServicePort> {
+      default {
+        appProtocol = "HTTP"
+        name = appProtocol.toLowerCase()
+        protocol = "TCP"
+        port = 8080
+        targetPort = port
+      }
+      [8086] = new Service.ServicePort {
+        name = "http"
+        port = 8086
+        targetPort = port
+      }
+      [8081] = new Service.ServicePort {
+        name = "debug"
+        port = 8081
+        targetPort = port
+      }
+    }
+  }
+}
+
+resources: Listing<K8sResource> = new Listing {
+  for (_, srv in services) {
+    getService(srv)
+  }
+}
+
+
+output {
+  value = resources
+  renderer = (K8sResource.output.renderer as YamlRenderer) {
+    isStream = true
+  }
+}
